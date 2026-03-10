@@ -1,1 +1,2 @@
-//Ésto va a leer las playlists tipo: #EXTINF:3.0, segment1.ts, etc.
+// Package streams will parse m3u8 playlists (e.g. #EXTINF:3.0, segment1.ts).
+package streams
