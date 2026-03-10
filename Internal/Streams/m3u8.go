@@ -1,0 +1,1 @@
+//Ésto va a leer las playlists tipo: #EXTINF:3.0, segment1.ts, etc.
