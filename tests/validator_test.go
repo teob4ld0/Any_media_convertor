@@ -3,7 +3,7 @@ package utilities_test
 import (
 	"testing"
 
-	utilities "github.com/teoba/any-media-convertor/Utilities"
+	utilities "github.com/teoba/any-media-convertor/Internal/Utilities"
 )
 
 func TestValidateURL(t *testing.T) {
