@@ -1,6 +1,25 @@
 # Any Media Convertor
 
-Web app that allows you to download media from any post on major platforms: **YouTube**, **X (Twitter)**, **Instagram** and **TikTok** — without relying on yt-dlp.
+Tool to download media from posts on major platforms: **YouTube**, **X (Twitter)**, **Instagram** and **TikTok** — without relying on yt-dlp. Uses each platform's own public APIs.
+
+> Currently in active development. Twitter/X is the only fully working extractor.
+
+---
+
+## How it works
+
+```
+input URL → validator → platform detector → extractor → downloader
+```
+
+1. **Validator** — checks the URL is well-formed and belongs to a supported platform, extracts the content ID.
+2. **Platform detector** — identifies Twitter, YouTube, Instagram or TikTok from the host.
+3. **Extractor** — calls the platform's public API to get the direct stream URLs.
+4. **Downloader** — fetches the media (HLS/MP4) and saves it locally. *(in progress)*
+
+### Twitter/X extractor
+
+Uses Twitter's public **syndication API** (`cdn.syndication.twimg.com`) — the same endpoint used by Twitter's own embed widget and by yt-dlp. No credentials or API key required. Returns all available stream variants (multiple MP4 bitrates + HLS playlist), sorted highest quality first.
 
 ---
 
@@ -8,143 +27,81 @@ Web app that allows you to download media from any post on major platforms: **Yo
 
 ```
 Any_media_convertor/
-├── Utilities/              # Core utility functions (Go)
-│   ├── doc.go              # Package-level documentation
-│   ├── platform.go         # Platform detection from URL
-│   ├── extractor.go        # Content ID extraction per platform
-│   └── validator.go        # Full URL validation pipeline
-├── tests/                  # Unit tests (external package: utilities_test)
-│   ├── platform_test.go    # Tests for DetectPlatform
-│   ├── extractor_test.go   # Tests for Extract*ID functions
-│   └── validator_test.go   # Tests for ValidateURL
-├── DTOs/                   # Data Transfer Objects (planned)
-├── EachPageController/     # Per-platform download logic (planned)
-├── Formats/                # Output format handling (planned)
-├── Frontend/               # Web UI (planned)
-├── go.mod                  # Go module definition
+├── main.go                         # Entry point — CLI, dispatches per platform
+├── go.mod
+├── Internal/
+│   ├── Extractors/
+│   │   ├── twitter.go              # Twitter/X — fully working
+│   │   ├── youtube.go              # stub
+│   │   └── instagram.go            # stub
+│   ├── Utilities/
+│   │   ├── doc.go
+│   │   ├── platform.go             # Platform detection from URL
+│   │   ├── extractor.go            # Content ID extraction per platform
+│   │   └── validator.go            # Full URL validation pipeline
+│   ├── client/
+│   │   └── http_client.go          # Shared HTTP client
+│   ├── downloader/
+│   │   ├── file.go                 # File download (stub)
+│   │   └── hls.go                  # HLS/m3u8 download (stub)
+│   └── Streams/
+│       └── m3u8.go                 # m3u8 parsing (stub)
+├── Frontend/                       # Web UI (planned)
+├── tests/
+│   ├── platform_test.go
+│   ├── extractor_test.go
+│   ├── validator_test.go
+│   ├── twitter_test.go
+│   └── http_client_test.go
 └── README.md
 ```
 
 ---
 
-## Utilities — Reference
+## Supported URL formats
 
-### `platform.go` — Platform detection
-
-| Symbol | Description |
+| Platform | Supported formats |
 |---|---|
-| `Platform` | Type alias (`string`) representing a supported platform. |
-| `PlatformYouTube`, `PlatformTwitter`, `PlatformInstagram`, `PlatformTikTok`, `PlatformUnknown` | Platform constants. |
-| `DetectPlatform(rawURL string) Platform` | Parses the URL, normalises the host, and returns which platform it belongs to. Returns `PlatformUnknown` for invalid or unrecognised URLs. |
-
-**Supported hosts:**
-
-| Platform | Hosts |
-|---|---|
-| YouTube | `youtube.com`, `youtu.be`, `m.youtube.com` |
-| Twitter/X | `twitter.com`, `x.com`, `mobile.x.com` |
-| Instagram | `instagram.com`, `m.instagram.com` |
-| TikTok | `tiktok.com`, `m.tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com` |
-
-> All hosts are matched without `www.` prefix and case-insensitively. URLs without a scheme (`https://`) are handled automatically.
+| Twitter/X | `x.com/user/status/ID`, `twitter.com/user/status/ID`, `mobile.x.com/...` |
+| YouTube | `youtube.com/watch?v=ID`, `youtu.be/ID`, `/shorts/`, `/live/`, `/embed/` |
+| Instagram | `/p/SHORTCODE/`, `/reel/SHORTCODE/`, `/tv/SHORTCODE/` |
+| TikTok | `tiktok.com/@user/video/ID`, `vm.tiktok.com/...`, `vt.tiktok.com/...` |
 
 ---
 
-### `extractor.go` — Content ID extraction
+## Usage
 
-Each function takes a raw URL and returns the content identifier.
+```powershell
+go run . <URL>
+```
 
-#### `ExtractYouTubeID(rawURL string) (string, error)`
+Example:
 
-Returns the 11-character video ID.
+```powershell
+go run . https://x.com/user/status/1234567890123456789
+```
 
-| Format | Example |
-|---|---|
-| Standard watch | `https://www.youtube.com/watch?v=VIDEO_ID` |
-| Short URL | `https://youtu.be/VIDEO_ID` |
-| Embed | `https://www.youtube.com/embed/VIDEO_ID` |
-| Shorts | `https://www.youtube.com/shorts/VIDEO_ID` |
-| Live | `https://www.youtube.com/live/VIDEO_ID` |
-| Mobile | `https://m.youtube.com/watch?v=VIDEO_ID` |
+Output:
 
-Extra query parameters (`&list=...`, `&t=...`) are ignored correctly.
+```
+Tweet 1234567890123456789 — 3 stream(s) found:
 
-#### `ExtractTwitterID(rawURL string) (string, error)`
+  [video/mp4] 2176000 bps
+  https://video.twimg.com/...mp4?tag=...
 
-Returns the numeric tweet ID.
+  [video/mp4] 832000 bps
+  https://video.twimg.com/...mp4?tag=...
 
-| Format | Example |
-|---|---|
-| Twitter | `https://twitter.com/user/status/1234567890` |
-| X | `https://x.com/user/status/1234567890` |
-| Mobile X | `https://mobile.x.com/user/status/1234567890` |
-
-#### `ExtractInstagramID(rawURL string) (string, error)`
-
-Returns the post/reel shortcode.
-
-| Format | Example |
-|---|---|
-| Post | `https://www.instagram.com/p/SHORTCODE/` |
-| Reel | `https://www.instagram.com/reel/SHORTCODE/` |
-| Reels | `https://www.instagram.com/reels/SHORTCODE/` |
-| IGTV | `https://www.instagram.com/tv/SHORTCODE/` |
-
-#### `ExtractTikTokID(rawURL string) (string, error)`
-
-Returns the numeric video ID or the short-link code.
-
-| Format | Example |
-|---|---|
-| Standard | `https://www.tiktok.com/@user/video/1234567890123456789` |
-| VM short | `https://vm.tiktok.com/ZMxxxxxx/` |
-| VT short | `https://vt.tiktok.com/ZSxxxxxx/` |
-| Mobile | `https://m.tiktok.com/@user/video/1234567890123456789` |
-
----
-
-### `validator.go` — Full validation pipeline
-
-#### `ValidateURL(rawURL string) ValidationResult`
-
-One-call function that:
-1. Validates the URL format.
-2. Detects the platform via `DetectPlatform`.
-3. Extracts the content ID via the corresponding `Extract*ID` function.
-4. Determines the content type (`video`, `short`, `live`, `tweet`, `post`, `reel`, `igtv`).
-
-Returns a `ValidationResult` struct:
-
-```go
-type ValidationResult struct {
-    OriginalURL string   // The URL as provided by the user
-    Platform    Platform // Detected platform
-    ContentID   string   // Extracted ID/shortcode
-    ContentType string   // "video", "short", "live", "tweet", "post", "reel", "igtv"
-    IsValid     bool     // true if everything succeeded
-    Error       string   // Error message (empty on success)
-}
+  [application/x-mpegURL]
+  https://video.twimg.com/...m3u8
 ```
 
 ---
 
-## Running the tests
+## Running tests
 
 ```powershell
-# If Go was installed via ZIP in ~/go_sdk, set PATH first:
-$env:GOROOT = "$env:USERPROFILE\go_sdk\go"
-$env:Path   = "$env:USERPROFILE\go_sdk\go\bin;$env:Path"
-
-# Run all tests (verbose)
 go test ./tests/ -v
-
-# Run specific test suites
-go test ./tests/ -v -run TestDetectPlatform
-go test ./tests/ -v -run TestExtractYouTubeID
-go test ./tests/ -v -run TestExtractTwitterID
-go test ./tests/ -v -run TestExtractInstagramID
-go test ./tests/ -v -run TestExtractTikTokID
-go test ./tests/ -v -run TestValidateURL
 ```
 
 ---
@@ -152,5 +109,5 @@ go test ./tests/ -v -run TestValidateURL
 ## Tech stack
 
 - **Language:** Go 1.22+
-- **Dependencies:** Standard library only (`net/url`, `regexp`, `strings`, `fmt`)
-- **No external tools:** yt-dlp, ffmpeg, etc. are intentionally avoided for learning purposes.
+- **Dependencies:** Standard library only — no external packages.
+- **No yt-dlp / ffmpeg:** uses each platform's own public APIs directly.
